@@ -340,12 +340,12 @@ static int ssl_setup(git_transport *t, const char *host)
 
 	SSL_library_init();
 	SSL_load_error_strings();
-	t->ssl.ctx = SSL_CTX_new(SSLv23_method());
+	t->ssl.ctx = SSL_CTX_new(SSLv23_client_method());
 	if (t->ssl.ctx == NULL)
 		return ssl_set_error(&t->ssl, 0);
 
 	SSL_CTX_set_mode(t->ssl.ctx, SSL_MODE_AUTO_RETRY);
-	SSL_CTX_set_verify(t->ssl.ctx, SSL_VERIFY_PEER, NULL);
+	SSL_CTX_set_verify(t->ssl.ctx, SSL_VERIFY_NONE, NULL);
 	if (!SSL_CTX_set_default_verify_paths(t->ssl.ctx))
 		return ssl_set_error(&t->ssl, 0);
 
@@ -356,6 +356,7 @@ static int ssl_setup(git_transport *t, const char *host)
 	if((ret = SSL_set_fd(t->ssl.ssl, t->socket)) == 0)
 		return ssl_set_error(&t->ssl, ret);
 
+ //   SSL_set_connect_state(t->ssl.ssl);
 	if ((ret = SSL_connect(t->ssl.ssl)) <= 0)
 		return ssl_set_error(&t->ssl, ret);
 
