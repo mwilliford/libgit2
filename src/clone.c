@@ -107,7 +107,7 @@ static int update_head_to_new_branch(git_repository *repo, const git_oid *target
 	return retcode;
 }
 
-static int update_head_to_remote(git_repository *repo, git_remote *remote)
+int update_head_to_remote(git_repository *repo, git_remote *remote)
 {
 	int retcode = GIT_ERROR;
 	git_remote_head *remote_head;

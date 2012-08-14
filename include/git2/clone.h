@@ -54,6 +54,15 @@ GIT_EXTERN(int) git_clone_bare(git_repository **out,
 										 const char *dest_path,
 										 git_indexer_stats *fetch_stats);
 
+/**
+*
+* @param repository where we update the HEAD
+* @remote (like origin) where we look into something like refs/remotes/origin/master and update head to it
+*
+*/
+GIT_EXTERN(int) update_head_to_remote(git_repository *repo,
+                                         git_remote *remote);
+
 /** @} */
 GIT_END_DECL
 #endif
