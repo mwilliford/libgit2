@@ -9,6 +9,7 @@
 
 #include "git2/net.h"
 #include "git2/indexer.h"
+#include "git2/ssh.h"
 #include "vector.h"
 #include "posix.h"
 #include "common.h"
@@ -16,6 +17,8 @@
 # include <openssl/ssl.h>
 # include <openssl/err.h>
 #endif
+//#include "libssh2_config.h"
+#include <libssh2.h>
 
 
 #define GIT_CAP_OFS_DELTA "ofs-delta"
@@ -31,6 +34,22 @@ typedef struct gitno_ssl {
 	SSL *ssl;
 } gitno_ssl;
 #endif
+
+typedef struct gitno_ssh {
+	LIBSSH2_SESSION *session;
+	LIBSSH2_CHANNEL *channel;
+
+	char* urlusername;
+
+	GIT_SOCKET socket;
+
+	git_ssh_auth_type authType;
+	char* sshUsername;
+	char* sshPassword;
+	char* sshPublicKey;
+	char* sshPrivateKey;
+	char* sshKeypass;
+} gitno_ssh;
 
 
 /*
@@ -70,10 +89,12 @@ struct git_transport {
 	int direction : 1, /* 0 fetch, 1 push */
 		connected : 1,
 		check_cert: 1,
-		encrypt : 1;
+		encrypt : 1,
+		gitssh : 1;
 #ifdef GIT_SSL
 	struct gitno_ssl ssl;
 #endif
+	struct gitno_ssh ssh;
 	GIT_SOCKET socket;
 	/**
 	 * Connect and store the remote heads
@@ -116,6 +137,7 @@ int git_transport_local(struct git_transport **transport);
 int git_transport_git(struct git_transport **transport);
 int git_transport_http(struct git_transport **transport);
 int git_transport_https(struct git_transport **transport);
+int git_transport_ssh(struct git_transport **transport);
 int git_transport_dummy(struct git_transport **transport);
 
 /**

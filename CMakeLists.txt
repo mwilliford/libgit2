@@ -10,6 +10,10 @@
 #
 # Install:
 # > cmake --build . --target install
+#
+# NOTE:  I had to set my CMAKE_PREFIX_PATH to the location of an openssl >1.0 for example, like this
+#export CMAKE_PREFIX_PATH=~/Documents/macprojects/lib/ios-openssl
+
 
 PROJECT(libgit2 C)
 CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
@@ -113,6 +117,12 @@ IF (OPENSSL_FOUND)
   SET(SSL_LIBRARIES ${OPENSSL_LIBRARIES})
 ENDIF()
 
+SET(LIBSSH2_LIB /Users/marcus/Documents/macprojects/libs/libssh2/src/.libs/libssh2.a)
+SET(LIBSSH2_INC /Users/marcus/Documents/macprojects/libs/libssh2/include)
+INCLUDE_DIRECTORIES(${LIBSSH2_INC})
+
+ADD_DEFINITIONS(-DGIT_SSH)
+
 IF (THREADSAFE)
 	IF (NOT WIN32)
 		find_package(Threads REQUIRED)
@@ -148,7 +158,7 @@ ELSEIF (CMAKE_SYSTEM_NAME MATCHES "(Solaris|SunOS)")
 	TARGET_LINK_LIBRARIES(git2 socket nsl)
 ENDIF ()
 
-TARGET_LINK_LIBRARIES(git2 ${CMAKE_THREAD_LIBS_INIT} ${SSL_LIBRARIES})
+TARGET_LINK_LIBRARIES(git2 ${CMAKE_THREAD_LIBS_INIT} ${SSL_LIBRARIES} ${LIBSSH2_LIB})
 SET_TARGET_PROPERTIES(git2 PROPERTIES VERSION ${LIBGIT2_VERSION_STRING})
 SET_TARGET_PROPERTIES(git2 PROPERTIES SOVERSION ${LIBGIT2_VERSION_MAJOR})
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/libgit2.pc.in ${CMAKE_CURRENT_BINARY_DIR}/libgit2.pc @ONLY)
@@ -195,7 +205,7 @@ IF (BUILD_CLAR)
 		WORKING_DIRECTORY ${CLAR_PATH}
 	)
 	ADD_EXECUTABLE(libgit2_clar ${SRC} ${CLAR_PATH}/clar_main.c ${SRC_TEST} ${SRC_ZLIB} ${SRC_HTTP} ${SRC_REGEX})
-	TARGET_LINK_LIBRARIES(libgit2_clar ${CMAKE_THREAD_LIBS_INIT} ${SSL_LIBRARIES})
+	TARGET_LINK_LIBRARIES(libgit2_clar ${CMAKE_THREAD_LIBS_INIT} ${SSL_LIBRARIES} ${LIBSSH2_LIB})
 
         IF (MSVC)
            # Precompiled headers

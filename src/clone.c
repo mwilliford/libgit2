@@ -116,6 +116,11 @@ int update_head_to_remote(git_repository *repo, git_remote *remote)
 
 	/* Get the remote's HEAD. This is always the first ref in remote->refs. */
 	remote_head = remote->refs.contents[0];
+	if (remote_head == NULL) {
+		giterr_set(GITERR_INVALID,
+							  "'%s' remote doesn't have HEAD", remote);
+		return retcode;
+	}
 	git_oid_cpy(&head_info.remote_head_oid, &remote_head->oid);
 	git_buf_init(&head_info.branchname, 16);
 	head_info.repo = repo;

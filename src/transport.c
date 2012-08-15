@@ -19,8 +19,8 @@ static struct {
 	{"http://", git_transport_http},
 	{"https://", git_transport_https},
 	{"file://", git_transport_local},
-	{"git+ssh://", git_transport_dummy},
-	{"ssh+git://", git_transport_dummy},
+	{"git+ssh://", git_transport_ssh},
+	{"ssh+git://", git_transport_ssh},
 	{NULL, 0}
 };
 
@@ -42,7 +42,7 @@ static git_transport_cb transport_find_fn(const char *url)
 
 	/* It could be a SSH remote path. Check to see if there's a : */
 	if (strrchr(url, ':'))
-		return &git_transport_dummy;	/* SSH is an unsupported transport mechanism in this version of libgit2 */
+		return &git_transport_ssh;	/* our new ssh support */
 
 	return NULL;
 }

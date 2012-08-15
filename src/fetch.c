@@ -100,6 +100,7 @@ int git_fetch_negotiate(git_remote *remote)
 
 int git_fetch_download_pack(git_remote *remote, git_off_t *bytes, git_indexer_stats *stats)
 {
+	//printf("fetch: remote->need_pack=%d\n",remote->need_pack);
 	if(!remote->need_pack)
 		return 0;
 

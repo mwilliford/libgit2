@@ -18,6 +18,11 @@
 #	endif
 #endif
 
+#define NETOPS_GIT_TRACE 1
+
+//#include "libssh2_config.h"
+#include <libssh2.h>
+
 #ifdef GIT_SSL
 # include <openssl/ssl.h>
 # include <openssl/x509v3.h>
@@ -45,7 +50,7 @@ static void net_set_error(const char *str)
 	LocalFree(err_str);
 }
 #else
-static void net_set_error(const char *str)
+void net_set_error(const char *str)
 {
 	giterr_set(GITERR_NET, "%s: %s", str, strerror(errno));
 }
@@ -73,6 +78,8 @@ void gitno_buffer_setup(git_transport *t, gitno_buffer *buf, char *data, unsigne
 	if (t->encrypt)
 		buf->ssl = &t->ssl;
 #endif
+	if (t->gitssh)
+		buf->ssh = &t->ssh;
 }
 
 #ifdef GIT_SSL
@@ -91,6 +98,57 @@ static int ssl_recv(gitno_ssl *ssl, void *data, size_t len)
 }
 #endif
 
+static int ssh_recv(gitno_ssh *ssh, void *data, size_t len) {
+	int rc;
+	size_t bytecount = 0;
+	int loopout = 0;
+	time_t calltime;
+	time(&calltime);
+
+	for (;;) {
+		do {
+			rc =
+					libssh2_channel_read( ssh->channel, data+bytecount, len-bytecount );
+
+#ifdef NETOPS_GIT_TRACE
+			printf("netops:ssh_recv rc=%d\n",rc);
+#endif
+			if (rc >= 0) {
+				if (rc > 0) {
+					loopout = 0;
+				}
+				bytecount += rc;
+			} else {
+				if (rc != LIBSSH2_ERROR_EAGAIN) {
+					// this is an error
+					net_set_error("ssh channel read issue");
+					return -1;
+				}
+			}
+		} while (rc > 0 && len - bytecount > 0);
+		time_t now;
+		time(&now);
+		double tdiff = difftime(now,calltime);
+		if (rc == LIBSSH2_ERROR_EAGAIN && bytecount==0 && tdiff < 10) {
+			ssh_wait(ssh->socket, ssh->session,10,0);
+
+#ifdef NETOPS_GIT_TRACE
+			printf("netops:ssh_recv eagin dtime=%.2lf\n",tdiff);
+#endif
+
+			loopout++;
+		} else {
+			break;
+		}
+	}
+#ifdef NETOPS_GIT_TRACE
+	printf("netops:ssh_recv '");
+	fwrite(data,1,bytecount,stdout);
+	printf("'\n");
+#endif
+	return bytecount;
+}
+
 int gitno_recv(gitno_buffer *buf)
 {
 	int ret;
@@ -99,6 +157,13 @@ int gitno_recv(gitno_buffer *buf)
 	if (buf->ssl != NULL) {
 		if ((ret = ssl_recv(buf->ssl, buf->data + buf->offset, buf->len - buf->offset)) < 0)
 			return -1;
+	} else
+#endif
+			if (buf->ssh != NULL) {
+		if ((ret = ssh_recv(buf->ssh, buf->data + buf->offset, buf->len - buf->offset)) < 0) {
+			return -1;
+		}
+
 	} else {
 		ret = p_recv(buf->fd, buf->data + buf->offset, buf->len - buf->offset, 0);
 		if (ret < 0) {
@@ -106,13 +171,7 @@ int gitno_recv(gitno_buffer *buf)
 			return -1;
 		}
 	}
-#else
-	ret = p_recv(buf->fd, buf->data + buf->offset, buf->len - buf->offset, 0);
-	if (ret < 0) {
-		net_set_error("Error receiving socket data");
-		return -1;
-	}
-#endif
+
 
 	buf->offset += ret;
 	return ret;
@@ -164,6 +223,41 @@ int gitno_ssl_teardown(git_transport *t)
 	return 0;
 }
 
+int gitno_ssh_teardown(git_transport *t) {
+	int rc, exitcode;
+	char *exitsignal=(char *)"none";
+	while( (rc = libssh2_channel_close(t->ssh.channel)) == LIBSSH2_ERROR_EAGAIN )
+
+	        ssh_wait(t->ssh.socket, t->ssh.session,2,0);
+
+	    if( rc == 0 )
+	    {
+	        exitcode = libssh2_channel_get_exit_status( t->ssh.channel );
+
+	        libssh2_channel_get_exit_signal(t->ssh.channel, &exitsignal,
+
+	                                        NULL, NULL, NULL, NULL, NULL);
+	    }
+
+	    //if (exitsignal)
+	       // printf("\nGot signal: %s\n", exitsignal);
+	    //else
+	    //    printf("\nEXIT: %d\n", exitcode);
+
+	    libssh2_channel_free(t->ssh.channel);
+
+	    t->ssh.channel = NULL;
+
+	shutdown:
+
+	    libssh2_session_disconnect(t->ssh.session,
+
+	                               "Normal Shutdown, Thank you for playing");
+	    libssh2_session_free(t->ssh.session);
+
+	    return 0;
+
+}
 
 #ifdef GIT_SSL
 /* Match host names according to RFC 2818 rules */
@@ -334,6 +428,166 @@ cert_fail:
 	return -1;
 }
 
+int ssh_wait(int socket_fd, LIBSSH2_SESSION *session, long int sec, long int usec)
+{
+    struct timeval timeout;
+    int rc;
+    fd_set fd;
+    fd_set *writefd = NULL;
+    fd_set *readfd = NULL;
+    int dir;
+
+    timeout.tv_sec = sec;
+    timeout.tv_usec = usec;
+
+    FD_ZERO(&fd);
+
+    FD_SET(socket_fd, &fd);
+
+    /* now make sure we wait in the correct direction */
+    dir = libssh2_session_block_directions(session);
+
+
+    if(dir & LIBSSH2_SESSION_BLOCK_INBOUND)
+        readfd = &fd;
+
+    if(dir & LIBSSH2_SESSION_BLOCK_OUTBOUND)
+            writefd = &fd;
+
+    rc = select(socket_fd + 1, readfd, writefd, NULL, &timeout);
+    return rc;
+}
+
+static int ssh_setup(git_transport *t, const char *host) {
+	int ret;
+
+	 /* Create a session instance */
+	    t->ssh.session = libssh2_session_init();
+
+	    if (!t->ssh.session)
+	        return -1;
+
+	    /* tell libssh2 we want it all done non-blocking */
+	    libssh2_session_set_blocking(t->ssh.session, 0);
+	    t->ssh.socket = t->socket;
+
+	    /* ... start it up. This will trade welcome banners, exchange keys,
+	     * and setup crypto, compression, and MAC layers
+	     */
+
+	    while ((ret = libssh2_session_handshake(t->ssh.session, t->socket)) ==
+	    		LIBSSH2_ERROR_EAGAIN);
+	    if (ret) {
+	        fprintf(stderr, "Failure establishing SSH session: %d\n", ret);
+	        return -1;
+	    }
+	    LIBSSH2_KNOWNHOSTS *nh;
+	    nh = libssh2_knownhost_init(t->ssh.session);
+
+	    if(!nh) {
+	        return -1;
+	    }
+
+	    /* read all hosts from here */
+	    libssh2_knownhost_readfile(nh, "known_hosts",
+
+	                               LIBSSH2_KNOWNHOST_FILE_OPENSSH);
+
+	    /* store all known hosts to here */
+	    libssh2_knownhost_writefile(nh, "dumpfile",
+
+	                                LIBSSH2_KNOWNHOST_FILE_OPENSSH);
+
+	    size_t len;
+	    int type;
+	    const char *fingerprint = libssh2_session_hostkey(t->ssh.session, &len, &type);
+
+	    if(fingerprint) {
+	        struct libssh2_knownhost *khost;
+	        /* introduced in 1.2.6 */
+	        int check = libssh2_knownhost_checkp(nh, host, 22,
+
+	                                             fingerprint, len,
+	                                             LIBSSH2_KNOWNHOST_TYPE_PLAIN|
+	                                             LIBSSH2_KNOWNHOST_KEYENC_RAW,
+	                                             &khost);
+
+	        fprintf(stderr, "Host check: %d, key: %s\n", check,
+	                (check <= LIBSSH2_KNOWNHOST_CHECK_MISMATCH)?
+	                khost->key:"<none>");
+
+	        /*****
+	         * At this point, we could verify that 'check' tells us the key is
+	         * fine or bail out.
+	         *****/
+	    }
+	    else {
+	        /* eeek, do cleanup here */
+	        return 3;
+	    }
+	    libssh2_knownhost_free(nh);
+
+
+	    if (t->ssh.authType == GIT_SSH_AUTH_PASSWORD) {
+		/* We could authenticate via password */
+		while ((ret =
+				libssh2_userauth_password(t->ssh.session, t->ssh.sshUsername, t->ssh.sshPassword)) == LIBSSH2_ERROR_EAGAIN);
+		if (ret) {
+			fprintf(stderr, "Authentication by password failed.\n");
+			goto shutdown;
+		}
+	} else if (t->ssh.authType == GIT_SSH_AUTH_KEY ) {
+
+		assert(t->ssh.sshUsername);
+		// start ssh key negotiations
+		while ((ret =
+				libssh2_userauth_publickey_fromfile(t->ssh.session, t->ssh.sshUsername,
+						t->ssh.sshPublicKey,
+						t->ssh.sshPrivateKey,
+						t->ssh.sshKeypass)) == LIBSSH2_ERROR_EAGAIN)
+			;
+		if (ret) {
+			fprintf(stderr, "\tAuthentication by public key failed\n");
+			if (ret == LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED) {
+				giterr_set(GITERR_NET, "LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED");
+			} else if (ret == LIBSSH2_ERROR_AUTHENTICATION_FAILED) {
+				giterr_set(GITERR_NET, "LIBSSH2_ERROR_AUTHENTICATION_FAILED");
+			}
+			goto shutdown;
+		}
+	} else {
+		giterr_set(GITERR_NET,"error, you must set the GIT_SSH_AUTH_TYPE");
+	}
+
+	// we are now authenticated, now open an exec channel for read write
+
+	    while( (t->ssh.channel = libssh2_channel_open_session(t->ssh.session)) == NULL &&
+	           libssh2_session_last_error(t->ssh.session,NULL,NULL,0) ==
+	           LIBSSH2_ERROR_EAGAIN )
+	    {
+	        ssh_wait(t->socket,t->ssh.session,5,0);
+	    }
+		if( t->ssh.channel == NULL )
+	    {
+			giterr_set(GITERR_NET,
+									"could not get ssh channel setup");
+	        ret = -1;
+	        goto shutdown;
+	    }
+
+	return 0;
+
+	shutdown:
+	   libssh2_session_disconnect(t->ssh.session,"Normal Shutdown");
+	    libssh2_session_free(t->ssh.session);
+
+
+	    return ret;
+
+}
+
+
+
 static int ssl_setup(git_transport *t, const char *host)
 {
 	int ret;
@@ -418,8 +672,37 @@ int gitno_connect(git_transport *t, const char *host, const char *port)
 
 	if (t->encrypt && ssl_setup(t, host) < 0)
 		return -1;
+	if (t->gitssh && ssh_setup(t,host) < 0) {
+		return -1;
+	}
 
 	return 0;
+}
+
+static int send_ssh(gitno_ssh *ssh, const char *msg, size_t len) {
+		int rc;
+
+		size_t bytecount = 0;
+		do {
+			rc = libssh2_channel_write( ssh->channel, msg+bytecount, len-bytecount );
+
+			if (rc >= 0) {
+				bytecount += rc;
+			} else {
+				if (rc != LIBSSH2_ERROR_EAGAIN) {
+					// this is an error
+					net_set_error("ssh channel write issue");
+					return -1;
+				}
+				// again loop, waiting to transmit
+			}
+		} while (len-bytecount > 0);
+#ifdef NETOPS_GIT_TRACE
+			printf("sendtrace:'");
+			fwrite(msg, 1, len, stdout);
+			printf("'\n");
+#endif
+		return bytecount;
 }
 
 #ifdef GIT_SSL
@@ -449,6 +732,10 @@ int gitno_send(git_transport *t, const char *msg, size_t len, int flags)
 	if (t->encrypt)
 		return send_ssl(&t->ssl, msg, len);
 #endif
+
+	if (t->gitssh) {
+		return send_ssh(&t->ssh, msg, len);
+	}
 
 	while (off < len) {
 		errno = 0;

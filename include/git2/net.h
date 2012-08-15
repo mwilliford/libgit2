@@ -20,6 +20,7 @@
 GIT_BEGIN_DECL
 
 #define GIT_DEFAULT_PORT "9418"
+#define SSH_DEFAULT_PORT "22"
 
 /*
  * We need this because we need to know whether we should call
