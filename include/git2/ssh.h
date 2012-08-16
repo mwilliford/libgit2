@@ -58,6 +58,15 @@ GIT_EXTERN(int) git_ssh_keyfileinfo(const char* publickey,
                                          const char* privatekey,
                                          const char* keypass);
 
+/**
+ *
+ * Free the global resources from the calls git_ssh_auth_setup and git_ssh_keyfileinfo
+ * Call this when you are done with ssh based repo auth
+ *
+ *
+ */
+GIT_EXTERN(void) git_ssh_freeauth(void);
+
 /** @} */
 GIT_END_DECL
 #endif

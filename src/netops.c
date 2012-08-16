@@ -529,11 +529,18 @@ static int ssh_setup(git_transport *t, const char *host) {
 
 
 	    if (t->ssh.authType == GIT_SSH_AUTH_PASSWORD) {
+	    assert(t->ssh.sshPassword);
+
 		/* We could authenticate via password */
 		while ((ret =
 				libssh2_userauth_password(t->ssh.session, t->ssh.sshUsername, t->ssh.sshPassword)) == LIBSSH2_ERROR_EAGAIN);
 		if (ret) {
 			fprintf(stderr, "Authentication by password failed.\n");
+#ifdef NETOPS_GIT_TRACE
+			printf("sshUsername=%s\n",t->ssh.sshUsername);
+			printf("sshPassword=%s\n",t->ssh.sshPassword);
+
+#endif
 			goto shutdown;
 		}
 	} else if (t->ssh.authType == GIT_SSH_AUTH_KEY ) {
@@ -557,6 +564,7 @@ static int ssh_setup(git_transport *t, const char *host) {
 		}
 	} else {
 		giterr_set(GITERR_NET,"error, you must set the GIT_SSH_AUTH_TYPE");
+		goto shutdown;
 	}
 
 	// we are now authenticated, now open an exec channel for read write

@@ -6,7 +6,7 @@
 
 #define DO_LOCAL_TEST 0
 #define SSH_LIVE_NETWORK_TESTS 1
-#define SSH_LIVE_REPO "git@github.com:mwilliford/testgit.git"
+#define SSH_LIVE_REPO "git@github.com:repo/testme"
 
 static git_repository *g_repo;
 
@@ -33,6 +33,9 @@ void test_ssh_ssh__net_test(void)
 		git_ssh_auth_setup(at);
 
 		git_ssh_password_auth("mwilliford","");
+		git_ssh_freeauth();
+		git_ssh_password_auth("mwilliford","");
+
 		//git_ssh_keyfileinfo("/Users/marcus/.ssh/id_rsa.pub",
 		 //                                        "/Users/marcus/.ssh/id_rsa",
 		  //                                       "");

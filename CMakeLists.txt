@@ -117,7 +117,8 @@ IF (OPENSSL_FOUND)
   SET(SSL_LIBRARIES ${OPENSSL_LIBRARIES})
 ENDIF()
 
-SET(LIBSSH2_LIB /Users/marcus/Documents/macprojects/libs/libssh2/src/.libs/libssh2.a)
+#SET(LIBSSH2_LIB /Users/marcus/Documents/macprojects/libs/libssh2/src/.libs/libssh2.a)
+SET(LIBSSH2_LIB /Users/marcus/Documents/macprojects/libs/libssh2-for-iOS/lib/libssh2.a)
 SET(LIBSSH2_INC /Users/marcus/Documents/macprojects/libs/libssh2/include)
 INCLUDE_DIRECTORIES(${LIBSSH2_INC})
 

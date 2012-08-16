@@ -39,6 +39,7 @@
 #include "git2/remote.h"
 #include "git2/clone.h"
 #include "git2/checkout.h"
+#include "git2/ssh.h"
 
 #include "git2/attr.h"
 #include "git2/branch.h"

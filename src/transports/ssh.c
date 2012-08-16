@@ -39,11 +39,11 @@ typedef struct {
 } transport_ssh;
 
 static git_ssh_auth_type authType;
-static const char* sshUsername;
-static const char* sshPassword;
-static const char* sshPublicKey;
-static const char* sshPrivateKey;
-static const char* sshKeypass;
+static char* sshUsername;
+static char* sshPassword;
+static char* sshPublicKey;
+static char* sshPrivateKey;
+static char* sshKeypass;
 
 int git_ssh_auth_setup(git_ssh_auth_type  auth_type) {
 	authType = auth_type;
@@ -51,18 +51,87 @@ int git_ssh_auth_setup(git_ssh_auth_type  auth_type) {
 }
 
 int git_ssh_password_auth(const char* username,const char* password) {
-	sshUsername = username;
-	sshPassword = password;
+
+	if (sshPassword) {
+		free(sshPassword);
+		sshPassword = 0;
+	}
+	if (sshUsername) {
+		free(sshUsername);
+		sshUsername = 0;
+	}
+
+	if (password) {
+		sshPassword = malloc(sizeof(char)*strlen(password));
+        strcpy(sshPassword, password);
+	}
+	if (username) {
+		sshUsername = malloc(sizeof(char)*strlen(username));
+		strcpy(sshUsername, username);
+	}
+
+#ifdef SSH_GIT_TRACE
+	printf("setting sshUsername=%s\n",sshUsername);
+	printf("setting sshPassword=%s\n",sshPassword);
+
+#endif
+
 	return 0;
 }
 
 int git_ssh_keyfileinfo(const char* publickey,
                                          const char* privatekey,
                                          const char* keypass) {
-	sshPublicKey = publickey;
-	sshPrivateKey = privatekey;
-	sshKeypass = keypass;
+	if (sshPublicKey) {
+		free(sshPublicKey);
+		sshPublicKey = 0;
+	}
+	if (sshPrivateKey) {
+		free(sshPrivateKey);
+		sshPrivateKey = 0;
+	}
+	if (sshKeypass) {
+		free(sshKeypass);
+		sshKeypass = 0;
+	}
+	if (publickey) {
+		sshPublicKey = malloc(sizeof(char)*strlen(publickey));
+		strcpy(sshPublicKey, publickey);
+	}
+	if (privatekey) {
+			sshPrivateKey = malloc(sizeof(char)*strlen(privatekey));
+			strcpy(sshPrivateKey, privatekey);
+		}
+	if (keypass) {
+			sshKeypass = malloc(sizeof(char)*strlen(keypass));
+			strcpy(sshKeypass, keypass);
+		}
+
+
 	return 0;
+}
+
+void git_ssh_freeauth() {
+if (sshPublicKey) {
+	free(sshPublicKey);
+	sshPublicKey = 0;
+}
+if (sshPrivateKey) {
+	free(sshPrivateKey);
+	sshPrivateKey = 0;
+}
+if (sshKeypass) {
+	free(sshKeypass);
+	sshKeypass = 0;
+}
+if (sshPassword) {
+	free(sshPassword);
+	sshPassword = 0;
+}
+if (sshUsername) {
+	free(sshUsername);
+	sshUsername = 0;
+}
 }
 
 /*
@@ -151,7 +220,14 @@ cleanup:
  */
 static int do_connect(transport_ssh *t, const char *url)
 {
-	char *host, *port,*username;
+
+#ifdef SSH_GIT_TRACE
+    printf("1sshUsername=%s\n",sshUsername);
+    printf("1sshPassword=%s\n",sshPassword);
+
+#endif
+
+    char *host, *port,*username;
 	const char prefix[] = "git+ssh://";
 	const char prefix2[] = "ssh+git://";
 	const char prefix3[] = "ssh://";
@@ -189,6 +265,16 @@ static int do_connect(transport_ssh *t, const char *url)
 	if (t->parent.ssh.sshUsername == NULL) {
 		t->parent.ssh.sshUsername = t->parent.ssh.urlusername; // use the url username if the sshUsername isn't set manually
 	}
+
+	if (t->parent.ssh.authType == GIT_SSH_AUTH_PASSWORD && t->parent.ssh.sshPassword == NULL) {
+		t->parent.ssh.sshPassword = "";
+	}
+
+#ifdef SSH_GIT_TRACE
+	printf("sshUsername=%s\n",t->parent.ssh.sshUsername);
+	printf("sshPassword=%s\n",t->parent.ssh.sshPassword);
+
+#endif
 
 	if (sshurl) {
 		port = git__strdup(SSH_DEFAULT_PORT);
@@ -563,11 +649,23 @@ int git_transport_ssh(git_transport **out)
 	int ret;
 #endif
 
+#ifdef SSH_GIT_TRACE
+    printf("tsshUsername=%s\n",sshUsername);
+    printf("tsshPassword=%s\n",sshPassword);
+
+#endif
+
 	t = git__malloc(sizeof(transport_ssh));
 	GITERR_CHECK_ALLOC(t);
 
 	memset(t, 0x0, sizeof(transport_ssh));
 
+
+#ifdef SSH_GIT_TRACE
+    printf("t2sshUsername=%s\n",sshUsername);
+    printf("t2sshPassword=%s\n",sshPassword);
+
+#endif
 	t->parent.connect = ssh_connect;
 	t->parent.ls = ssh_ls;
 	t->parent.negotiate_fetch = ssh_negotiate_fetch;
